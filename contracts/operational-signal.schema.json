@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goreecloud.com/contracts/observability/operational-signal/v1",
+  "title": "GoreeCloud Observability operational signal",
+  "type": "object",
+  "required": ["signal_id", "component_id", "source", "signal_type", "state", "observed_at", "collected_at", "ttl_seconds"],
+  "properties": {
+    "signal_id": {"type": "string", "minLength": 1},
+    "component_id": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "signal_type": {"type": "string", "minLength": 1},
+    "state": {"enum": ["healthy", "degraded", "failed", "unavailable", "unknown", "stale", "partially_observed", "not_monitored", "not_applicable"]},
+    "observed_at": {"type": "string"},
+    "collected_at": {"type": "string"},
+    "ttl_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+    "correlation_id": {"type": ["string", "null"]},
+    "attributes": {"type": "object"},
+    "collection_gaps": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}
