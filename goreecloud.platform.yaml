@@ -1,0 +1,133 @@
+schema_version: '0.4'
+component:
+  type: service
+  id: goreecloud-observability
+  product_name: GoreeCloud Observability
+  repository: GoreeCloud/observability
+lifecycle: development
+version: 0.1.0-dev
+supported_platforms:
+  - linux
+api:
+  versions:
+    - v1
+  endpoints:
+    - name: health
+      url: /healthz
+      purpose: Development reference-runtime process health.
+    - name: readiness
+      url: /readyz
+      purpose: Development collector readiness; not estate-monitoring or production acceptance.
+    - name: signal-ingest
+      url: /v1/signals
+      purpose: Local reference operational-signal ingestion.
+    - name: component-health
+      url: /v1/components/{component_id}/health
+      purpose: Local reference component-health aggregate.
+platform_systems:
+  manager:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - PLANNED-FEATURES.md
+    notes: Manager administrative health feeds and diagnostic surfaces are not yet integrated.
+  privacy_shield:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - PRIVACY POLICY.md
+    notes: Privacy Shield telemetry-purpose, minimization, retention, and production acceptance are not yet integrated.
+  wardveil_security:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - SECURITY.md
+    notes: Wardveil producer trust, security interpretation, tamper resistance, and production acceptance are not yet integrated.
+  everkeep:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - PLANNED-FEATURES.md
+    notes: Durable operational evidence backup, restore, retention recovery, and continuity acceptance are not yet implemented.
+  glaze_ui:
+    result: not-applicable-justified
+    version: null
+    evidence:
+      - README.md
+    notes: The current foundation is a headless service/library with no user-facing interface; future dashboards would require Glaze UI evaluation.
+  mesh:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - PLANNED-FEATURES.md
+    notes: Registered producer transport, dependency topology, and cross-component correlation are not yet integrated with Mesh.
+    capabilities: []
+    dependencies: []
+    published_events: []
+    consumed_events: []
+  identity:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - SECURITY.md
+    notes: The reference runtime does not implement trusted GoreeCloud Identity producer authentication or scoped credentials.
+  policy:
+    result: applicable-blocked
+    version: null
+    evidence:
+      - PLANNED-FEATURES.md
+    notes: Policy-service health and decision correlation are not yet integrated with GoreeCloud Policy.
+  observability:
+    result: not-applicable-justified
+    version: 0.1.0-dev
+    evidence:
+      - src/goreecloud_observability/model.py
+      - src/goreecloud_observability/store.py
+      - tests/test_observability.py
+    notes: This repository implements the GoreeCloud Observability authority itself; a separate Observability-to-Observability integration is not applicable.
+health:
+  health_endpoint: /healthz
+  readiness_endpoint: /readyz
+continuity:
+  backup:
+    required: true
+    requirements:
+      - Future durable operational evidence and configuration must be included in accepted Everkeep-aligned backup scope according to retention requirements.
+  restore:
+    required: true
+    requirements:
+      - Future durable evidence stores must support clean-target restore verification without manufacturing freshness.
+  export:
+    required: true
+    requirements:
+      - Retained operational evidence must remain portable with provenance and timestamps intact.
+  portability:
+    required: true
+    requirements:
+      - Signal and health contracts must remain implementation-independent and self-hostable.
+external_dependencies: []
+compatibility:
+  platform_contract: '0.4'
+  glaze_ui_required: null
+  requires:
+    - goreecloud-platform-contract==0.4
+  provides:
+    - goreecloud-observability-reference-health-v1
+evidence:
+  acceptance_tests: []
+  release: []
+conformance:
+  status: nonconformant
+  validated_at: null
+  evidence:
+    - README.md
+    - SPECIFICATIONS.md
+    - src/goreecloud_observability/model.py
+    - src/goreecloud_observability/store.py
+    - tests/test_observability.py
+  blockers:
+    - Component remains in Development and is not production accepted.
+    - Manager, Privacy Shield, Wardveil Security, Everkeep, Mesh, Identity, and Policy integrations remain blocked.
+    - Exact-head unit-test CI is source validation and is not recorded as accepted platform evidence until a governed evidence record exists.
+    - Durable storage, full collectors, trusted producer identity, retention, alerts/SLOs, recovery, deployment, and production acceptance remain outstanding.
+    - Stable qualification remains outstanding.

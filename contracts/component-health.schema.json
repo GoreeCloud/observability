@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://goreecloud.com/contracts/observability/component-health/v1",
+  "title": "GoreeCloud Observability component health",
+  "type": "object",
+  "required": ["component_id", "state", "evidence_count", "signal_ids", "sources", "collection_gaps", "production_accepted"],
+  "properties": {
+    "component_id": {"type": "string"},
+    "state": {"enum": ["healthy", "degraded", "failed", "unavailable", "unknown", "stale", "partially_observed", "not_monitored", "not_applicable"]},
+    "evidence_count": {"type": "integer", "minimum": 0},
+    "signal_ids": {"type": "array", "items": {"type": "string"}},
+    "sources": {"type": "array", "items": {"type": "string"}},
+    "collection_gaps": {"type": "array", "items": {"type": "string"}},
+    "production_accepted": {"const": false}
+  },
+  "additionalProperties": false
+}
