@@ -4,7 +4,8 @@ GoreeCloud Observability is the platform-wide operational-health, telemetry, dia
 
 **Lifecycle:** Development  
 **Foundation version:** `0.1.0-dev`  
-**Platform Contract:** `0.4`
+**Platform Contract:** `0.4`  
+**License:** `AGPL-3.0-or-later`
 
 This repository now contains a bounded reference implementation for operational-signal normalization and component health aggregation. It is intentionally **not** a production monitoring deployment or proof that any GoreeCloud component is monitored.
 
@@ -31,6 +32,10 @@ The reference runtime binds to `127.0.0.1:8790` by default and refuses non-loopb
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## License
+
+GoreeCloud Observability is licensed under `AGPL-3.0-or-later`. See `LICENSE`.
 
 See `SPECIFICATIONS.md`, `IMPLEMENTED-FEATURES.md`, `PLANNED-FEATURES.md`, and `goreecloud.platform.yaml` for the evidence boundary.
 
