@@ -114,14 +114,7 @@ compatibility:
   provides:
     - goreecloud-observability-reference-health-v1
 evidence:
-  acceptance_tests:
-    - id: observability-foundation-unit-tests
-      category: observability
-      path: tests/test_observability.py
-      revision: pending-pr-head
-      result: pending
-      observed_at: null
-      notes: Exact-head result is populated only after CI execution.
+  acceptance_tests: []
   release: []
 conformance:
   status: nonconformant
@@ -135,5 +128,6 @@ conformance:
   blockers:
     - Component remains in Development and is not production accepted.
     - Manager, Privacy Shield, Wardveil Security, Everkeep, Mesh, Identity, and Policy integrations remain blocked.
+    - Exact-head unit-test CI is source validation and is not recorded as accepted platform evidence until a governed evidence record exists.
     - Durable storage, full collectors, trusted producer identity, retention, alerts/SLOs, recovery, deployment, and production acceptance remain outstanding.
     - Stable qualification remains outstanding.
