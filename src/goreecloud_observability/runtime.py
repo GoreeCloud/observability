@@ -22,6 +22,22 @@ def readiness_payload() -> dict[str, Any]:
     return {"status": "ready", "component": COMPONENT, "version": VERSION, "production_accepted": False}
 
 
+def parse_json_payload(raw: bytes) -> Any:
+    """Parse strict JSON: duplicate keys and non-finite numbers are not authoritative input."""
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError("non-finite JSON number is not permitted")
+
+    return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "GoreeCloudObservability/0.1"
 
@@ -59,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 262144:
                 raise ValueError("request body size is invalid")
-            payload = json.loads(self.rfile.read(length))
+            payload = parse_json_payload(self.rfile.read(length))
             signal = OperationalSignal.from_mapping(payload)
             STORE.add(signal)
             self._json(202, {"accepted": True, "signal_id": signal.signal_id, "component_id": signal.component_id})
