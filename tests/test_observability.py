@@ -114,6 +114,14 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(["healthy"] * 250, results)
         self.assertEqual(50, store.health("service:test", NOW)["evidence_count"])
 
+    def test_boolean_ttl_rejected(self):
+        with self.assertRaises(ValueError):
+            signal(ttl_seconds=True)
+
+    def test_oversized_signal_id_rejected(self):
+        with self.assertRaises(ValueError):
+            signal(signal_id="s" * 257)
+
     def test_runtime_health_is_not_production_claim(self):
         self.assertEqual("healthy", health_payload()["status"])
         self.assertFalse(readiness_payload()["production_accepted"])
