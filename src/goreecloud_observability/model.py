@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import re
+import math
 from typing import Any, Mapping
 
 
@@ -28,7 +29,10 @@ SENSITIVE_KEYS = {
 def _text(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
-    return value.strip()
+    cleaned = value.strip()
+    if len(cleaned) > 256:
+        raise ValueError(f"{name} exceeds the Development length limit")
+    return cleaned
 
 
 def _time(value: Any, name: str) -> datetime:
@@ -72,8 +76,10 @@ def _safe_attributes(value: Any) -> dict[str, Any]:
             raise ValueError("telemetry attribute key is invalid")
         if _sensitive_attribute_key(key):
             raise ValueError("sensitive telemetry attribute key is not permitted")
-        if isinstance(item, (dict, list, tuple, set)):
-            raise ValueError("nested telemetry attributes are not supported by the Development foundation")
+        if not isinstance(item, (str, bool, int, float, type(None))):
+            raise ValueError("telemetry attributes must be JSON scalar values")
+        if isinstance(item, float) and not math.isfinite(item):
+            raise ValueError("non-finite telemetry attributes are not permitted")
         if isinstance(item, str) and len(item) > 2048:
             raise ValueError("telemetry string attribute exceeds the Development limit")
         safe[str(key)] = item
@@ -103,14 +109,16 @@ class OperationalSignal:
         except (TypeError, ValueError) as exc:
             raise ValueError("state is not supported") from exc
         ttl = value.get("ttl_seconds", 60)
-        if not isinstance(ttl, int) or ttl < 1 or ttl > 86400:
+        if type(ttl) is not int or ttl < 1 or ttl > 86400:
             raise ValueError("ttl_seconds must be an integer between 1 and 86400")
         gaps = value.get("collection_gaps", [])
         if not isinstance(gaps, list) or not all(isinstance(item, str) for item in gaps):
             raise ValueError("collection_gaps must be a list of strings")
+        if len(gaps) > 32 or any(len(item) > 256 for item in gaps):
+            raise ValueError("collection_gaps exceed the Development limit")
         correlation = value.get("correlation_id")
-        if correlation is not None and not isinstance(correlation, str):
-            raise ValueError("correlation_id must be a string or null")
+        if correlation is not None:
+            correlation = _text(correlation, "correlation_id")
         return cls(
             signal_id=_text(value.get("signal_id"), "signal_id"),
             component_id=_text(value.get("component_id"), "component_id"),
