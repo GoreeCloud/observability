@@ -11,6 +11,7 @@ _PRECEDENCE = {
     HealthState.FAILED: 90,
     HealthState.UNAVAILABLE: 80,
     HealthState.DEGRADED: 70,
+    HealthState.STALE: 65,
     HealthState.UNKNOWN: 60,
     HealthState.PARTIALLY_OBSERVED: 50,
     HealthState.NOT_MONITORED: 40,

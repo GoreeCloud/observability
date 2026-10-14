@@ -35,6 +35,20 @@ class ObservabilityTests(unittest.TestCase):
         store.add(signal(age=61))
         self.assertEqual("stale", store.health("service:test", NOW)["state"])
 
+    def test_explicit_stale_signal_is_not_an_aggregation_error(self):
+        store = HealthStore()
+        store.add(signal("healthy", "healthy"))
+        store.add(signal("stale-report", "stale"))
+        result = store.health("service:test", NOW)
+        self.assertEqual("stale", result["state"])
+        self.assertFalse(result["production_accepted"])
+
+    def test_explicit_stale_does_not_hide_failure(self):
+        store = HealthStore()
+        store.add(signal("stale-report", "stale"))
+        store.add(signal("failed-report", "failed"))
+        self.assertEqual("failed", store.health("service:test", NOW)["state"])
+
     def test_failure_outranks_healthy(self):
         store = HealthStore()
         store.add(signal("healthy", "healthy"))
