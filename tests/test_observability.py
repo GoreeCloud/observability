@@ -67,6 +67,18 @@ class ObservabilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             signal(attributes={"access_token": "do-not-store"})
 
+    def test_secret_field_variants_are_rejected(self):
+        for key in ("db_password", "oauthToken", "authorization_header",
+                    "session_cookie", "x-api-key", "privateKey",
+                    "recoveryCredentials"):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, "sensitive"):
+                    signal(attributes={key: "synthetic-placeholder"})
+
+    def test_benign_operational_field_names_remain_allowed(self):
+        stored = signal(attributes={"request_count": 5, "readyState": True})
+        self.assertEqual({"request_count": 5, "readyState": True}, stored.attributes)
+
     def test_collection_gaps_preserved(self):
         store = HealthStore()
         store.add(signal(collection_gaps=["metrics collector unavailable"]))

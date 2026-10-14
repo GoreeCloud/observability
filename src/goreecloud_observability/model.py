@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import re
 from typing import Any, Mapping
 
 
@@ -42,6 +43,22 @@ def _time(value: Any, name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _sensitive_attribute_key(key: str) -> bool:
+    # Normalize camelCase and separators so prefixed/suffixed credential fields cannot
+    # bypass the base exact-key blocklist (e.g. db_password, oauthToken).
+    separated = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    normalized = re.sub(r"[^a-z0-9]+", "_", separated.lower()).strip("_")
+    pieces = set(normalized.split("_"))
+    return (
+        normalized in SENSITIVE_KEYS
+        or bool(pieces & {"password", "passwd", "passphrase", "secret",
+                          "token", "credential", "credentials", "cookie",
+                          "authorization", "bearer"})
+        or "private_key" in normalized
+        or "api_key" in normalized
+    )
+
+
 def _safe_attributes(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
@@ -51,9 +68,10 @@ def _safe_attributes(value: Any) -> dict[str, Any]:
         raise ValueError("attributes exceed the Development limit")
     safe: dict[str, Any] = {}
     for key, item in value.items():
-        normalized = str(key).lower().replace("-", "_")
-        if normalized in SENSITIVE_KEYS:
-            raise ValueError(f"attribute key '{key}' is not permitted")
+        if not isinstance(key, str) or not key.strip() or len(key) > 128:
+            raise ValueError("telemetry attribute key is invalid")
+        if _sensitive_attribute_key(key):
+            raise ValueError("sensitive telemetry attribute key is not permitted")
         if isinstance(item, (dict, list, tuple, set)):
             raise ValueError("nested telemetry attributes are not supported by the Development foundation")
         if isinstance(item, str) and len(item) > 2048:

@@ -19,3 +19,5 @@ Implemented missing => unknown, stale-only => stale, and severity-aware fresh ag
 Implemented local-only ingestion/query/health endpoints, Contract 0.4 declaration, unit tests, and CI.
 
 Development in-memory collector capacity is bounded to 1,024 component identities and 256 signals per component by default. Additional identities are rejected without evicting other components; a 503 capacity response does not imply durable recovery, production acceptance, or a monitoring deployment. Ingest and read snapshots use a shared lock to prevent concurrent iteration errors.
+
+Development telemetry attribute validation rejects credential-bearing field names even when prefixed, suffixed, camel-cased, or separator-delimited (for example synthetic db_password and oauthToken keys), while preserving ordinary operational attributes. This remains a best-effort source guard and is not a substitute for trusted producer, privacy-policy, or production telemetry acceptance.
