@@ -122,6 +122,26 @@ class ObservabilityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             signal(signal_id="s" * 257)
 
+    def test_bounded_metadata(self):
+        for change in (
+            {"component_id": "c" * 257},
+            {"source": "x" * 257},
+            {"correlation_id": "x" * 257},
+            {"collection_gaps": ["gap"] * 33},
+            {"collection_gaps": ["x" * 257]},
+        ):
+            with self.subTest(change=list(change)):
+                with self.assertRaises(ValueError):
+                    signal(**change)
+
+    def test_scalar_attribute_values(self):
+        for value in (float("nan"), float("inf"), object()):
+            with self.subTest(value=str(value)):
+                with self.assertRaises(ValueError):
+                    signal(attributes={"duration_ms": value})
+        stored = signal(attributes={"duration_ms": 2.5, "attempts": 3})
+        self.assertEqual(2.5, stored.attributes["duration_ms"])
+
     def test_runtime_health_is_not_production_claim(self):
         self.assertEqual("healthy", health_payload()["status"])
         self.assertFalse(readiness_payload()["production_accepted"])
