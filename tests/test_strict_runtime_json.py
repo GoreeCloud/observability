@@ -1,10 +1,13 @@
 import http.client
 import json
 import threading
+from unittest.mock import patch
+from datetime import datetime, timezone
 import unittest
 from http.server import ThreadingHTTPServer
 
 from goreecloud_observability.runtime import Handler, parse_json_payload
+from goreecloud_observability.store import HealthStore
 
 
 class StrictRuntimeJsonTests(unittest.TestCase):
@@ -50,6 +53,23 @@ class StrictRuntimeJsonTests(unittest.TestCase):
         status, response = self.post(b'{"request":{},"request":{}}')
         self.assertEqual(400, status)
         self.assertEqual("invalid_signal", response.get("error"))
+
+    def test_capacity_exhaustion_returns_explicit_503(self):
+        now = datetime.now(timezone.utc).isoformat()
+        def payload(component_id):
+            return json.dumps({
+                "signal_id": component_id, "component_id": component_id,
+                "source": "test", "signal_type": "readiness",
+                "state": "healthy", "observed_at": now,
+                "collected_at": now, "ttl_seconds": 60,
+            }).encode("utf-8")
+        with patch("goreecloud_observability.runtime.STORE", HealthStore(max_components=1)):
+            accepted, accepted_response = self.post(payload("service:known"))
+            rejected, rejected_response = self.post(payload("service:unknown"))
+            self.assertEqual(202, accepted)
+            self.assertTrue(accepted_response["accepted"])
+            self.assertEqual(503, rejected)
+            self.assertEqual("capacity_exhausted", rejected_response["error"])
 
     def test_non_finite_input_is_rejected_over_http(self):
         status, response = self.post(b'{"data":NaN}')

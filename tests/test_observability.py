@@ -1,7 +1,9 @@
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from goreecloud_observability import HealthState, HealthStore, OperationalSignal
+from goreecloud_observability.store import SignalCapacityError
 from goreecloud_observability.runtime import health_payload, readiness_payload
 
 
@@ -69,6 +71,36 @@ class ObservabilityTests(unittest.TestCase):
         store = HealthStore()
         store.add(signal(collection_gaps=["metrics collector unavailable"]))
         self.assertEqual(["metrics collector unavailable"], store.health("service:test", NOW)["collection_gaps"])
+
+    def test_component_capacity_rejects_new_identity_without_eviction(self):
+        store = HealthStore(max_components=1, max_signals_per_component=2)
+        store.add(signal("first", "healthy"))
+        store.add(signal("second", "healthy"))
+        with self.assertRaises(SignalCapacityError):
+            store.add(OperationalSignal.from_mapping({
+                **signal("third").to_dict(), "component_id": "service:other"
+            }))
+        self.assertEqual(["first", "second"], store.health("service:test", NOW)["signal_ids"])
+        self.assertEqual("unknown", store.health("service:other", NOW)["state"])
+
+    def test_invalid_store_limits_rejected(self):
+        for limit in (0, -1, True):
+            with self.subTest(limit=limit):
+                with self.assertRaises(ValueError):
+                    HealthStore(max_components=limit)
+                with self.assertRaises(ValueError):
+                    HealthStore(max_signals_per_component=limit)
+
+    def test_concurrent_ingest_and_snapshot_preserve_store_integrity(self):
+        store = HealthStore(max_signals_per_component=50)
+        store.add(signal("initial", "healthy"))
+        def write(index):
+            store.add(signal(f"signal-{index}", "healthy"))
+            return store.health("service:test", NOW)["state"]
+        with ThreadPoolExecutor(max_workers=12) as executor:
+            results = list(executor.map(write, range(250)))
+        self.assertEqual(["healthy"] * 250, results)
+        self.assertEqual(50, store.health("service:test", NOW)["evidence_count"])
 
     def test_runtime_health_is_not_production_claim(self):
         self.assertEqual("healthy", health_payload()["status"])

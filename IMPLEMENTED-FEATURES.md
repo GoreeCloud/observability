@@ -17,3 +17,5 @@ Implemented missing => unknown, stale-only => stale, and severity-aware fresh ag
 ## OBS-FOUNDATION-004 — Development runtime and CI
 
 Implemented local-only ingestion/query/health endpoints, Contract 0.4 declaration, unit tests, and CI.
+
+Development in-memory collector capacity is bounded to 1,024 component identities and 256 signals per component by default. Additional identities are rejected without evicting other components; a 503 capacity response does not imply durable recovery, production acceptance, or a monitoring deployment. Ingest and read snapshots use a shared lock to prevent concurrent iteration errors.

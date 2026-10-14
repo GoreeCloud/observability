@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import deque
 from datetime import datetime, timezone
+from threading import RLock
 from typing import Any
 
 from .model import HealthState, OperationalSignal
@@ -20,19 +21,35 @@ _PRECEDENCE = {
 }
 
 
+class SignalCapacityError(Exception):
+    """A new component cannot be stored without discarding existing evidence."""
+
+
 class HealthStore:
-    def __init__(self, max_signals_per_component: int = 256) -> None:
-        if max_signals_per_component < 1:
+    def __init__(self, max_signals_per_component: int = 256, max_components: int = 1024) -> None:
+        if type(max_signals_per_component) is not int or max_signals_per_component < 1:
             raise ValueError("max_signals_per_component must be positive")
+        if type(max_components) is not int or max_components < 1:
+            raise ValueError("max_components must be positive")
         self._max = max_signals_per_component
-        self._signals: dict[str, deque[OperationalSignal]] = defaultdict(lambda: deque(maxlen=self._max))
+        self._max_components = max_components
+        self._signals: dict[str, deque[OperationalSignal]] = {}
+        self._lock = RLock()
 
     def add(self, signal: OperationalSignal) -> None:
-        self._signals[signal.component_id].append(signal)
+        with self._lock:
+            queue = self._signals.get(signal.component_id)
+            if queue is None:
+                if len(self._signals) >= self._max_components:
+                    raise SignalCapacityError("component capacity exhausted")
+                queue = deque(maxlen=self._max)
+                self._signals[signal.component_id] = queue
+            queue.append(signal)
 
     def health(self, component_id: str, now: datetime | None = None) -> dict[str, Any]:
         current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        signals = list(self._signals.get(component_id, ()))
+        with self._lock:
+            signals = list(self._signals.get(component_id, ()))
         if not signals:
             return self._aggregate(component_id, HealthState.UNKNOWN, [], ["no operational evidence collected"])
 

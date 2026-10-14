@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import unquote
 
 from .model import OperationalSignal
-from .store import HealthStore
+from .store import HealthStore, SignalCapacityError
 
 COMPONENT = "goreecloud-observability"
 VERSION = "0.1.0-dev"
@@ -79,6 +79,8 @@ class Handler(BaseHTTPRequestHandler):
             signal = OperationalSignal.from_mapping(payload)
             STORE.add(signal)
             self._json(202, {"accepted": True, "signal_id": signal.signal_id, "component_id": signal.component_id})
+        except SignalCapacityError:
+            self._json(503, {"accepted": False, "error": "capacity_exhausted"})
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"accepted": False, "error": "invalid_signal", "message": str(exc)})
 
