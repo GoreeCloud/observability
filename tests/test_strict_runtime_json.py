@@ -35,6 +35,28 @@ class StrictRuntimeJsonTests(unittest.TestCase):
     def test_valid_nested_json_is_accepted_by_parser(self):
         self.assertEqual({"subject": {"action": "read"}}, parse_json_payload(b'{"subject":{"action":"read"}}'))
 
+    def test_accepted_signal_is_queryable_without_claiming_production(self):
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {"signal_id": "ready-1", "component_id": "service:round2",
+                   "source": "synthetic-test", "signal_type": "readiness",
+                   "state": "healthy", "observed_at": now, "collected_at": now,
+                   "ttl_seconds": 60}
+        with patch("goreecloud_observability.runtime.STORE", HealthStore()):
+            status, response = self.post(json.dumps(payload).encode())
+            self.assertEqual(202, status)
+            self.assertTrue(response["accepted"])
+            conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+            try:
+                conn.request("GET", "/v1/components/service%3Around2/health")
+                result = conn.getresponse()
+                health = json.loads(result.read())
+                self.assertEqual(200, result.status)
+                self.assertEqual("healthy", health["state"])
+                self.assertEqual(1, health["evidence_count"])
+                self.assertFalse(health["production_accepted"])
+            finally:
+                conn.close()
+
     def test_top_level_duplicate_key_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate JSON"):
             parse_json_payload(b'{"authority":"one","authority":"other"}')
