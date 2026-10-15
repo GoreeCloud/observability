@@ -79,6 +79,36 @@ class StrictRuntimeJsonTests(unittest.TestCase):
         self.assertEqual(403, status)
         self.assertEqual("browser_origin_not_supported", response["error"])
 
+    def raw_post(self, extra_headers):
+        """Send deliberate HTTP header duplicates without client normalization."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.putrequest("POST", "/v1/signals", skip_host=True)
+            connection.putheader("Host", "127.0.0.1")
+            connection.putheader("Content-Type", "application/json")
+            for key, value in extra_headers:
+                connection.putheader(key, value)
+            connection.endheaders(b"{}")
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def test_ambiguous_http_headers_are_rejected(self):
+        cases = [
+            ([("Host", "example.invalid"), ("Content-Length", "2")], 403, "untrusted_host"),
+            ([("Content-Length", "2"), ("Content-Length", "2")], 400, "invalid_request_framing"),
+            ([("Content-Length", "2"), ("Transfer-Encoding", "chunked")], 400, "invalid_request_framing"),
+            ([("Content-Length", "+2")], 400, "invalid_request_framing"),
+            ([("Content-Length", "2"), ("Sec-Fetch-Site", "cross-site")], 403, "browser_origin_not_supported"),
+            ([("Content-Length", "2"), ("Origin", "")], 403, "browser_origin_not_supported"),
+        ]
+        for headers, expected_status, expected_error in cases:
+            with self.subTest(headers=headers):
+                status, response = self.raw_post(headers)
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_error, response["error"])
+
     def test_valid_nested_json_is_accepted_by_parser(self):
         self.assertEqual({"subject": {"action": "read"}}, parse_json_payload(b'{"subject":{"action":"read"}}'))
 
