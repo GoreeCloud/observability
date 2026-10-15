@@ -50,7 +50,9 @@ class StrictRuntimeJsonTests(unittest.TestCase):
             self.assertEqual("no-store", response.getheader("Cache-Control"))
             self.assertEqual("nosniff", response.getheader("X-Content-Type-Options"))
             self.assertEqual("application/json", response.getheader("Content-Type"))
-            response.read()
+            payload = json.loads(response.read())
+            self.assertIs(payload["production_accepted"], False)
+            self.assertEqual("development-reference-runtime", payload["scope"])
         finally:
             connection.close()
 
