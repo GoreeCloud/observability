@@ -5,7 +5,7 @@ import math
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from .model import OperationalSignal
 from .store import HealthStore, SignalCapacityError
@@ -45,8 +45,39 @@ def parse_json_payload(raw: bytes) -> Any:
     return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant, parse_float=parse_finite_float)
 
 
+def is_loopback_host(host_header: str) -> bool:
+    """Allow only local Host names in this untrusted Development HTTP server."""
+    if not host_header or any(char in host_header for char in ("/", "\\", "@", "?", "#")):
+        return False
+    try:
+        parsed = urlsplit("http://" + host_header)
+        return (
+            parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+            and parsed.username is None
+            and parsed.password is None
+            and (parsed.port is None or parsed.port > 0)
+        )
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "GoreeCloudObservability/0.1"
+
+    def _local_request(self) -> bool:
+        if is_loopback_host(self.headers.get("Host", "")):
+            return True
+        self._json(403, {"error": "untrusted_host"})
+        return False
+
+    def _json_post(self) -> bool:
+        if self.headers.get("Origin"):
+            self._json(403, {"error": "browser_origin_not_supported"})
+            return False
+        if self.headers.get_content_type() != "application/json":
+            self._json(415, {"error": "unsupported_media_type"})
+            return False
+        return True
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -57,6 +88,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._local_request():
+            return
         if self.path == "/healthz":
             self._json(200, health_payload())
             return
@@ -75,8 +108,12 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._local_request():
+            return
         if self.path != "/v1/signals":
             self._json(404, {"error": "not_found"})
+            return
+        if not self._json_post():
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
