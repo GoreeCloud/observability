@@ -63,7 +63,7 @@ def _sensitive_attribute_key(key: str) -> bool:
     return (
         any(fragment in compact for fragment in credential_fragments)
         or compact.endswith("token")
-        normalized in SENSITIVE_KEYS
+        or normalized in SENSITIVE_KEYS
         or bool(pieces & {"password", "passwd", "passphrase", "secret",
                           "token", "credential", "credentials", "cookie",
                           "authorization", "bearer"})
