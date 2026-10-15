@@ -57,6 +57,20 @@ class StrictRuntimeJsonTests(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_future_observation_rejected_over_http(self):
+        now = datetime.now(timezone.utc)
+        from datetime import timedelta
+        payload = {
+            "signal_id": "future-1", "component_id": "service:clock",
+            "source": "synthetic", "signal_type": "readiness",
+            "state": "healthy",
+            "observed_at": (now + timedelta(seconds=60)).isoformat(),
+            "collected_at": now.isoformat(), "ttl_seconds": 60,
+        }
+        status, response = self.post(json.dumps(payload).encode("utf-8"))
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response["error"])
+
     def test_top_level_duplicate_key_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate JSON"):
             parse_json_payload(b'{"authority":"one","authority":"other"}')
