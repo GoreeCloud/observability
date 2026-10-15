@@ -46,6 +46,27 @@ class HealthStore:
                 self._signals[signal.component_id] = queue
             queue.append(signal)
 
+    def reclaim_expired_components(
+        self, now: datetime | None = None, *, confirm: bool = False
+    ) -> list[str]:
+        """Explicit Development-only recovery; never silently discard evidence."""
+        if confirm is not True:
+            raise ValueError("expired evidence reclamation requires explicit confirmation")
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        with self._lock:
+            expired = sorted(
+                component_id
+                for component_id, signals in self._signals.items()
+                if signals
+                and all(
+                    signal.collected_at <= current and not signal.fresh_at(current)
+                    for signal in signals
+                )
+            )
+            for component_id in expired:
+                del self._signals[component_id]
+            return expired
+
     def health(self, component_id: str, now: datetime | None = None) -> dict[str, Any]:
         current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         with self._lock:
