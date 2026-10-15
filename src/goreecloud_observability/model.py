@@ -72,27 +72,41 @@ def _sensitive_attribute_key(key: str) -> bool:
     )
 
 
+def _safe_attribute_value(value: Any, depth: int, remaining: list[int]) -> Any:
+    """Validate nested v1 JSON attributes with bounded size and secret filtering."""
+    remaining[0] -= 1
+    if remaining[0] < 0 or depth > 8:
+        raise ValueError("telemetry attributes exceed the Development complexity limit")
+    if isinstance(value, Mapping):
+        if len(value) > 64:
+            raise ValueError("attributes exceed the Development limit")
+        safe: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip() or len(key) > 128:
+                raise ValueError("telemetry attribute key is invalid")
+            if _sensitive_attribute_key(key):
+                raise ValueError("sensitive telemetry attribute key is not permitted")
+            safe[key] = _safe_attribute_value(item, depth + 1, remaining)
+        return safe
+    if isinstance(value, list):
+        if len(value) > 64:
+            raise ValueError("telemetry array exceeds the Development limit")
+        return [_safe_attribute_value(item, depth + 1, remaining) for item in value]
+    if not isinstance(value, (str, bool, int, float, type(None))):
+        raise ValueError("telemetry attributes must be JSON-safe values")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("non-finite telemetry attributes are not permitted")
+    if isinstance(value, str) and len(value) > 2048:
+        raise ValueError("telemetry string attribute exceeds the Development limit")
+    return value
+
+
 def _safe_attributes(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, Mapping):
         raise ValueError("attributes must be an object")
-    if len(value) > 64:
-        raise ValueError("attributes exceed the Development limit")
-    safe: dict[str, Any] = {}
-    for key, item in value.items():
-        if not isinstance(key, str) or not key.strip() or len(key) > 128:
-            raise ValueError("telemetry attribute key is invalid")
-        if _sensitive_attribute_key(key):
-            raise ValueError("sensitive telemetry attribute key is not permitted")
-        if not isinstance(item, (str, bool, int, float, type(None))):
-            raise ValueError("telemetry attributes must be JSON scalar values")
-        if isinstance(item, float) and not math.isfinite(item):
-            raise ValueError("non-finite telemetry attributes are not permitted")
-        if isinstance(item, str) and len(item) > 2048:
-            raise ValueError("telemetry string attribute exceeds the Development limit")
-        safe[str(key)] = item
-    return safe
+    return _safe_attribute_value(value, 0, [256])
 
 
 @dataclass(frozen=True, slots=True)
