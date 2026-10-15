@@ -88,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(202, {"accepted": True, "signal_id": signal.signal_id, "component_id": signal.component_id})
         except SignalCapacityError:
             self._json(503, {"accepted": False, "error": "capacity_exhausted"})
-        except (ValueError, json.JSONDecodeError) as exc:
+        except (ValueError, json.JSONDecodeError, RecursionError) as exc:
             self._json(400, {"accepted": False, "error": "invalid_signal", "message": str(exc)})
 
     def log_message(self, format: str, *args: object) -> None:
