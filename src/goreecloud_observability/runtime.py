@@ -65,17 +65,30 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "GoreeCloudObservability/0.1"
 
     def _local_request(self) -> bool:
-        if is_loopback_host(self.headers.get("Host", "")):
+        hosts = self.headers.get_all("Host", [])
+        if len(hosts) == 1 and is_loopback_host(hosts[0]):
             return True
         self._json(403, {"error": "untrusted_host"})
         return False
 
     def _json_post(self) -> bool:
-        if self.headers.get("Origin"):
+        # No browser-origin or cross-site mutations in this local-only service.
+        fetch_site = self.headers.get_all("Sec-Fetch-Site", [])
+        if self.headers.get_all("Origin") or len(fetch_site) > 1 or (
+            fetch_site and fetch_site[0].lower() not in {"none", "same-origin"}
+        ):
             self._json(403, {"error": "browser_origin_not_supported"})
             return False
         if self.headers.get_content_type() != "application/json":
             self._json(415, {"error": "unsupported_media_type"})
+            return False
+        # Python's HTTP parser does not decode chunked request bodies here.
+        # Reject ambiguous framing rather than reading an inconsistent body.
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) != 1 or (
+            not lengths[0].isascii() or not lengths[0].isdecimal()
+        ):
+            self._json(400, {"error": "invalid_request_framing"})
             return False
         return True
 
