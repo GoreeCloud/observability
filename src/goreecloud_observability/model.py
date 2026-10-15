@@ -140,7 +140,7 @@ class OperationalSignal:
     def fresh_at(self, now: datetime | None = None) -> bool:
         current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         age = (current - self.observed_at).total_seconds()
-        return 0 <= age <= self.ttl_seconds
+        return self.collected_at <= current and 0 <= age <= self.ttl_seconds
 
     def to_dict(self) -> dict[str, Any]:
         return {
