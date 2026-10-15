@@ -1,25 +1,28 @@
 # Observability v1 producer-to-ingestion qualification
 
-**Status: NOT ACCEPTED — source-contract audit only.**  
-**Review date:** 2026-10-15.  
-**Contract:** `contracts/operational-signal.schema.json` (v1, `additionalProperties: false`).  
+**Status: SOURCE CONTRACT AND REPLAY TESTS PASSED; live integration and production acceptance remain outstanding.**  
+**Reviewed:** 2026-10-15  
+**Authoritative contract:** `contracts/operational-signal.schema.json` (v1, `additionalProperties: false`)  
 **Manager producer pin:** `a7f6a65f442d3e517baddbe7b6ce7c250d142c8c`.
 
-## Confirmed structural gap
+## Finding and correction — nested attributes
 
-Manager `integrations/observability.py::build_operational_signal` accepts JSON-safe nested dictionaries and lists inside `attributes`. The authoritative v1 schema specifies `attributes` as an object without scalar-only value restrictions. The current Observability `OperationalSignal._safe_attributes` rejects nested dictionary or list values. A Manager-produced, schema-shaped signal with nested attributes can therefore fail ingestion even when all required top-level fields are valid.
+The Manager v1 producer adapter permits JSON-safe nested dictionaries and lists inside `attributes`, and the public schema defines `attributes` as an object without scalar-only value restrictions. An earlier Observability ingestion model rejected nested values.
 
-**Scope:** This is verified from producer, schema, and ingestion source inspection, not from a live cross-service call. No deployed or authenticated telemetry producer has been accepted.
+**Corrective commit:** `d91ee8a53058c9e83fffbbfe5474cf28ba0e740d` allows nested v1-compatible objects and arrays, with recursive sensitive-key filtering, finite JSON numbers, string limits, maximum nesting depth eight, maximum per-object/array length 64 and a bounded node budget of 256. Positive interoperability-shaped and negative privacy/complexity regressions were added.
 
-## Replay and recovery review
+## Finding and correction — retries
 
-`HealthStore.add` currently appends retained signals to a bounded per-component queue without duplicate `signal_id`/`source` detection. Replays may increase `evidence_count`; producer-scoped deduplication and deterministic handling of conflicting duplicate payloads are not yet qualified. `reclaim_expired_components` is an explicit confirmation-gated Development-only library operation; it does not provide durable retention, audited deletion, or disaster recovery.
+An earlier `HealthStore.add` appended repeated same-producer signals, inflating `evidence_count`.
 
-## Required acceptance
+**Corrective commit:** `f6edc0b455758c2d7ce060db6489b5d88ff43fea` now treats an identical same-source/same-`signal_id` retry as a no-op; a conflicting reuse raises `ValueError` before mutation. Equal IDs from distinct producers remain independent evidence. Source tests cover all three behaviors.
 
-1. Define canonical v1 nested attribute support (including privacy filtering, depth and payload bounds) and test Manager producer → Observability model ingestion for both scalar and nested values; do not silently change published contract semantics.
-2. Define producer-scoped signal identity and retry/replay policy. Demonstrate idempotent retries and fail-closed conflicting duplicate evidence without mutating health state.
-3. Add an authenticated live producer transport test, ingestion authorization, bounded retention/deletion and restore evidence with explicit environmental scope.
-4. Verify `unknown`/`stale` states, collection gaps and timestamp integrity at the exact candidate revisions before promotion.
+**Verification:** exact-source GitHub CI succeeded at `97535ee97e73708aeceb2fc3549ec45abb022ca4`, running **48 tests**. The earlier red producer-contract run demonstrates that the regression previously detected scalar-only ingestion.
 
-**Execution note:** Proposed store replay-handling source updates were blocked by connected GitHub tool safety checks. No deduplication fix is claimed. This audit is not independent approval or production qualification.
+## Remaining acceptance requirements
+
+- Run Manager-produced payloads through a live authenticated Observability ingress on exact compatible revisions; structural test fixtures are not live producer authentication.
+- Qualify producer identity and authorization, bounded retention/deletion, concurrency and replay persistence semantics across restarts, and durable restore evidence.
+- Verify collection completeness, unknown/stale/gap behavior, privacy and source trust in a representative target environment.
+
+`reclaim_expired_components` remains a confirmation-gated Development-only in-memory library operation, not durable recovery. **No merge, deployment, independent human approval, or production qualification is claimed.**
