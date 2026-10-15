@@ -82,7 +82,9 @@ class ObservabilityTests(unittest.TestCase):
     def test_collection_gaps_preserved(self):
         store = HealthStore()
         store.add(signal(collection_gaps=["metrics collector unavailable"]))
-        self.assertEqual(["metrics collector unavailable"], store.health("service:test", NOW)["collection_gaps"])
+        result = store.health("service:test", NOW)
+        self.assertEqual(["metrics collector unavailable"], result["collection_gaps"])
+        self.assertEqual("partially_observed", result["state"])
 
     def test_component_capacity_rejects_new_identity_without_eviction(self):
         store = HealthStore(max_components=1, max_signals_per_component=2)
