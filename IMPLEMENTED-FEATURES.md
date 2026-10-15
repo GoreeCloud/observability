@@ -29,3 +29,5 @@ Development telemetry enforces a 256-character ceiling on signal/component/sourc
 Development parser rejects non-finite floating-point results from JSON exponent parsing. This closes the parser-level overflow ambiguity without establishing authenticated telemetry producers or production safety.
 
 Development health aggregation treats healthy signals containing collection gaps as partially observed instead of fully healthy. Existing failed/degraded evidence retains severity priority. This is a source-only rule and not live monitoring coverage.
+
+Second-pass solo-maintainer audit: OperationalSignal ingestion rejects contradictory event timestamps when collected_at precedes observed_at. Equal timestamps remain valid; synthetic unit and HTTP negative-path tests verify fail-closed behavior. No production authenticated telemetry is asserted.
