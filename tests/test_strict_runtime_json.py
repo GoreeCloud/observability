@@ -71,6 +71,13 @@ class StrictRuntimeJsonTests(unittest.TestCase):
         self.assertEqual(400, status)
         self.assertEqual("invalid_signal", response["error"])
 
+    def test_excessively_nested_json_is_rejected_over_http(self):
+        # A bounded HTTP body can still exceed the JSON decoder's recursion limit.
+        payload = b"[" * 10000 + b"0" + b"]" * 10000
+        status, response = self.post(payload)
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response["error"])
+
     def test_top_level_duplicate_key_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate JSON"):
             parse_json_payload(b'{"authority":"one","authority":"other"}')
