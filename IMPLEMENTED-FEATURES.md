@@ -31,3 +31,5 @@ Development parser rejects non-finite floating-point results from JSON exponent 
 Development health aggregation treats healthy signals containing collection gaps as partially observed instead of fully healthy. Existing failed/degraded evidence retains severity priority. This is a source-only rule and not live monitoring coverage.
 
 Second-pass solo-maintainer audit: OperationalSignal ingestion rejects contradictory event timestamps when collected_at precedes observed_at. Equal timestamps remain valid; synthetic unit and HTTP negative-path tests verify fail-closed behavior. No production authenticated telemetry is asserted.
+
+Solo-maintainer audit: deeply nested JSON is rejected with HTTP 400, and collection times before observations are rejected. Development-only behavior; no live telemetry authority claimed.
