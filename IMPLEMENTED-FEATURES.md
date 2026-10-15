@@ -33,3 +33,5 @@ Development health aggregation treats healthy signals containing collection gaps
 Second-pass solo-maintainer audit: OperationalSignal ingestion rejects contradictory event timestamps when collected_at precedes observed_at. Equal timestamps remain valid; synthetic unit and HTTP negative-path tests verify fail-closed behavior. No production authenticated telemetry is asserted.
 
 Solo-maintainer audit: deeply nested JSON is rejected with HTTP 400, and collection times before observations are rejected. Development-only behavior; no live telemetry authority claimed.
+
+Operational evidence is not fresh until its declared collection time; this is tested with synthetic signals. The CI workflow verifies the exact checked-out source commit before running tests.
