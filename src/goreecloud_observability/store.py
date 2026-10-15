@@ -44,6 +44,11 @@ class HealthStore:
                     raise SignalCapacityError("component capacity exhausted")
                 queue = deque(maxlen=self._max)
                 self._signals[signal.component_id] = queue
+            for previous in queue:
+                if previous.signal_id == signal.signal_id and previous.source == signal.source:
+                    if previous.to_dict() == signal.to_dict():
+                        return  # exact retry; keep evidence count stable
+                    raise ValueError("conflicting signal identity from telemetry producer")
             queue.append(signal)
 
     def reclaim_expired_components(
