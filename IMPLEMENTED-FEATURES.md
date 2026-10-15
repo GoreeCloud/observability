@@ -25,3 +25,5 @@ Development telemetry attribute validation rejects credential-bearing field name
 Development signal parsing enforces a 256-character ceiling on identifiers, source and correlation fields, bounds collection gaps to 32 entries with 256 characters each, requires a genuine integer TTL (not a boolean), and restricts telemetry attribute values to finite JSON scalars. This limits input ambiguity and memory amplification but is not a complete retention or producer-trust policy.
 
 Development telemetry enforces a 256-character ceiling on signal/component/source/correlation identifiers, collection gaps of at most 32 entries of 256 characters, integer-only TTL, and finite JSON-scalar attributes. These resource and serialization guards are not producer authentication or a complete privacy/retention policy.
+
+Development parser rejects non-finite floating-point results from JSON exponent parsing. This closes the parser-level overflow ambiguity without establishing authenticated telemetry producers or production safety.
