@@ -111,6 +111,32 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(["first", "second"], store.health("service:test", NOW)["signal_ids"])
         self.assertEqual("unknown", store.health("service:other", NOW)["state"])
 
+    def test_expired_component_reclamation_requires_confirmation(self):
+        store = HealthStore(max_components=1)
+        store.add(signal("old", age=61))
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            store.reclaim_expired_components(NOW)
+        self.assertEqual("stale", store.health("service:test", NOW)["state"])
+        self.assertEqual(["service:test"], store.reclaim_expired_components(NOW, confirm=True))
+        self.assertEqual("unknown", store.health("service:test", NOW)["state"])
+        store.add(signal("replacement"))
+        self.assertEqual("healthy", store.health("service:test", NOW)["state"])
+
+    def test_reclamation_preserves_fresh_and_future_collected_evidence(self):
+        store = HealthStore(max_components=3)
+        store.add(signal("stale", age=61))
+        store.add(OperationalSignal.from_mapping({
+            **signal("fresh").to_dict(), "component_id": "service:fresh",
+        }))
+        store.add(OperationalSignal.from_mapping({
+            **signal("future", collected_at=(NOW + timedelta(seconds=10)).isoformat()).to_dict(),
+            "component_id": "service:future",
+        }))
+        self.assertEqual(["service:test"], store.reclaim_expired_components(NOW, confirm=True))
+        self.assertEqual("healthy", store.health("service:fresh", NOW)["state"])
+        self.assertEqual("stale", store.health("service:future", NOW)["state"])
+        self.assertEqual("healthy", store.health("service:future", NOW + timedelta(seconds=10))["state"])
+
     def test_invalid_store_limits_rejected(self):
         for limit in (0, -1, True):
             with self.subTest(limit=limit):
