@@ -27,3 +27,5 @@ Development signal parsing enforces a 256-character ceiling on identifiers, sour
 Development telemetry enforces a 256-character ceiling on signal/component/source/correlation identifiers, collection gaps of at most 32 entries of 256 characters, integer-only TTL, and finite JSON-scalar attributes. These resource and serialization guards are not producer authentication or a complete privacy/retention policy.
 
 Development parser rejects non-finite floating-point results from JSON exponent parsing. This closes the parser-level overflow ambiguity without establishing authenticated telemetry producers or production safety.
+
+Development health aggregation treats healthy signals containing collection gaps as partially observed instead of fully healthy. Existing failed/degraded evidence retains severity priority. This is a source-only rule and not live monitoring coverage.
