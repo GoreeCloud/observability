@@ -65,6 +65,8 @@ class HealthStore:
             state = max((signal.state for signal in applicable), key=lambda item: _PRECEDENCE[item]) if applicable else HealthState.NOT_APPLICABLE
 
         gaps = list(dict.fromkeys(gap for signal in fresh for gap in signal.collection_gaps))
+        if gaps and state is HealthState.HEALTHY:
+            state = HealthState.PARTIALLY_OBSERVED
         return self._aggregate(component_id, state, fresh, gaps)
 
     @staticmethod
