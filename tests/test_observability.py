@@ -83,7 +83,8 @@ class ObservabilityTests(unittest.TestCase):
     def test_secret_field_variants_are_rejected(self):
         for key in ("db_password", "oauthToken", "authorization_header",
                     "session_cookie", "x-api-key", "privateKey",
-                    "recoveryCredentials"):
+                    "recoveryCredentials", "apikey", "apiKey", "PRIVATEKEY",
+                    "passwordHash", "clientsecret", "authToken", "oauthtoken"):
             with self.subTest(key=key):
                 with self.assertRaisesRegex(ValueError, "sensitive"):
                     signal(attributes={key: "synthetic-placeholder"})
