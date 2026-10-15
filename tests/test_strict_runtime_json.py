@@ -71,6 +71,20 @@ class StrictRuntimeJsonTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "non-finite"):
                     parse_json_payload(b'{"metric":' + value + b'}')
 
+    def test_numeric_exponent_overflow_is_rejected(self):
+        for value in (b"1e309", b"-1e309"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "non-finite"):
+                    parse_json_payload(b'{"metric":' + value + b'}')
+
+    def test_finite_json_float_is_preserved(self):
+        self.assertEqual({"metric": 1.25}, parse_json_payload(b'{"metric":1.25}'))
+
+    def test_numeric_exponent_overflow_is_rejected_over_http(self):
+        status, response = self.post(b'{"metric":1e309}')
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response.get("error"))
+
     def test_duplicate_input_is_rejected_over_http(self):
         status, response = self.post(b'{"request":{},"request":{}}')
         self.assertEqual(400, status)
