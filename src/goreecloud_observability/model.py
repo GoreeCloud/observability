@@ -116,6 +116,10 @@ class OperationalSignal:
             raise ValueError("collection_gaps must be a list of strings")
         if len(gaps) > 32 or any(len(item) > 256 for item in gaps):
             raise ValueError("collection_gaps exceed the Development limit")
+        observed = _time(value.get("observed_at"), "observed_at")
+        collected = _time(value.get("collected_at"), "collected_at")
+        if collected < observed:
+            raise ValueError("collected_at must not precede observed_at")
         correlation = value.get("correlation_id")
         if correlation is not None:
             correlation = _text(correlation, "correlation_id")
@@ -125,8 +129,8 @@ class OperationalSignal:
             source=_text(value.get("source"), "source"),
             signal_type=_text(value.get("signal_type"), "signal_type"),
             state=state,
-            observed_at=_time(value.get("observed_at"), "observed_at"),
-            collected_at=_time(value.get("collected_at"), "collected_at"),
+            observed_at=observed,
+            collected_at=collected,
             ttl_seconds=ttl,
             correlation_id=correlation,
             attributes=_safe_attributes(value.get("attributes", {})),
