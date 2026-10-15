@@ -93,6 +93,33 @@ class ObservabilityTests(unittest.TestCase):
         stored = signal(attributes={"request_count": 5, "readyState": True})
         self.assertEqual({"request_count": 5, "readyState": True}, stored.attributes)
 
+    def test_nested_contract_attributes_are_accepted(self):
+        attributes = {"checks": {"api": "healthy"}, "counts": [1, 2], "labels": [{"zone": "a"}]}
+        self.assertEqual(attributes, signal(attributes=attributes).attributes)
+
+    def test_nested_credentials_and_nonfinite_values_are_rejected(self):
+        for attributes in (
+            {"checks": {"authorization_header": "placeholder"}},
+            {"samples": [{"apiKey": "placeholder"}]},
+            {"stats": {"duration": float("inf")}},
+            {"counts": [float("nan")]},
+        ):
+            with self.subTest(attributes=repr(attributes)):
+                with self.assertRaises(ValueError):
+                    signal(attributes=attributes)
+
+    def test_nested_attribute_complexity_is_bounded(self):
+        deep = {"status": "ok"}
+        for _ in range(9):
+            deep = {"nested": deep}
+        for attributes in (
+            deep, {"samples": list(range(65))},
+            {"samples": [[0] * 64 for _ in range(5)]},
+        ):
+            with self.subTest(size=len(repr(attributes))):
+                with self.assertRaises(ValueError):
+                    signal(attributes=attributes)
+
     def test_collection_gaps_preserved(self):
         store = HealthStore()
         store.add(signal(collection_gaps=["metrics collector unavailable"]))
