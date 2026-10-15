@@ -186,6 +186,8 @@ class ObservabilityTests(unittest.TestCase):
 
     def test_runtime_health_is_not_production_claim(self):
         self.assertEqual("healthy", health_payload()["status"])
+        self.assertIs(health_payload()["production_accepted"], False)
+        self.assertEqual("development-reference-runtime", health_payload()["scope"])
         self.assertFalse(readiness_payload()["production_accepted"])
 
 
