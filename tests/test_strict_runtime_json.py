@@ -1,0 +1,217 @@
+import http.client
+import json
+import threading
+from unittest.mock import patch
+from datetime import datetime, timezone
+import unittest
+from http.server import ThreadingHTTPServer
+
+from goreecloud_observability.runtime import Handler, parse_json_payload
+from goreecloud_observability.store import HealthStore
+
+
+class StrictRuntimeJsonTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=3)
+
+    def post(self, payload):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request("POST", "/v1/signals", body=payload, headers={"Content-Type": "application/json"})
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def request_with_headers(self, method, path, payload, headers):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request(method, path, body=payload, headers=headers)
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def test_health_response_has_privacy_headers(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request("GET", "/healthz")
+            response = connection.getresponse()
+            self.assertEqual(200, response.status)
+            self.assertEqual("no-store", response.getheader("Cache-Control"))
+            self.assertEqual("nosniff", response.getheader("X-Content-Type-Options"))
+            self.assertEqual("application/json", response.getheader("Content-Type"))
+            payload = json.loads(response.read())
+            self.assertIs(payload["production_accepted"], False)
+            self.assertEqual("development-reference-runtime", payload["scope"])
+        finally:
+            connection.close()
+
+    def test_nonlocal_host_is_rejected(self):
+        for host in ("example.invalid", "localhost.example.invalid", "127.0.0.1@evil.invalid"):
+            with self.subTest(host=host):
+                status, response = self.request_with_headers("GET", "/healthz", None, {"Host": host})
+                self.assertEqual(403, status)
+                self.assertEqual("untrusted_host", response["error"])
+
+    def test_non_json_post_media_types_are_rejected(self):
+        for content_type in ("text/plain", "application/x-www-form-urlencoded"):
+            with self.subTest(content_type=content_type):
+                status, response = self.request_with_headers(
+                    "POST", "/v1/signals", b"{}", {"Content-Type": content_type},
+                )
+                self.assertEqual(415, status)
+                self.assertEqual("unsupported_media_type", response["error"])
+
+    def test_browser_origin_post_is_rejected(self):
+        status, response = self.request_with_headers(
+            "POST", "/v1/signals", b"{}", {
+                "Content-Type": "application/json", "Origin": "https://example.invalid",
+            },
+        )
+        self.assertEqual(403, status)
+        self.assertEqual("browser_origin_not_supported", response["error"])
+
+    def raw_post(self, extra_headers):
+        """Send deliberate HTTP header duplicates without client normalization."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.putrequest("POST", "/v1/signals", skip_host=True)
+            connection.putheader("Host", "127.0.0.1")
+            connection.putheader("Content-Type", "application/json")
+            for key, value in extra_headers:
+                connection.putheader(key, value)
+            connection.endheaders(b"{}")
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def test_ambiguous_http_headers_are_rejected(self):
+        cases = [
+            ([("Host", "example.invalid"), ("Content-Length", "2")], 403, "untrusted_host"),
+            ([("Content-Length", "2"), ("Content-Length", "2")], 400, "invalid_request_framing"),
+            ([("Content-Length", "2"), ("Transfer-Encoding", "chunked")], 400, "invalid_request_framing"),
+            ([("Content-Length", "+2")], 400, "invalid_request_framing"),
+            ([("Content-Length", "2"), ("Sec-Fetch-Site", "cross-site")], 403, "browser_origin_not_supported"),
+            ([("Content-Length", "2"), ("Origin", "")], 403, "browser_origin_not_supported"),
+        ]
+        for headers, expected_status, expected_error in cases:
+            with self.subTest(headers=headers):
+                status, response = self.raw_post(headers)
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_error, response["error"])
+
+    def test_valid_nested_json_is_accepted_by_parser(self):
+        self.assertEqual({"subject": {"action": "read"}}, parse_json_payload(b'{"subject":{"action":"read"}}'))
+
+    def test_accepted_signal_is_queryable_without_claiming_production(self):
+        now = datetime.now(timezone.utc).isoformat()
+        payload = {"signal_id": "ready-1", "component_id": "service:round2",
+                   "source": "synthetic-test", "signal_type": "readiness",
+                   "state": "healthy", "observed_at": now, "collected_at": now,
+                   "ttl_seconds": 60}
+        with patch("goreecloud_observability.runtime.STORE", HealthStore()):
+            status, response = self.post(json.dumps(payload).encode())
+            self.assertEqual(202, status)
+            self.assertTrue(response["accepted"])
+            conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+            try:
+                conn.request("GET", "/v1/components/service%3Around2/health")
+                result = conn.getresponse()
+                health = json.loads(result.read())
+                self.assertEqual(200, result.status)
+                self.assertEqual("healthy", health["state"])
+                self.assertEqual(1, health["evidence_count"])
+                self.assertFalse(health["production_accepted"])
+            finally:
+                conn.close()
+
+    def test_future_observation_rejected_over_http(self):
+        now = datetime.now(timezone.utc)
+        from datetime import timedelta
+        payload = {
+            "signal_id": "future-1", "component_id": "service:clock",
+            "source": "synthetic", "signal_type": "readiness",
+            "state": "healthy",
+            "observed_at": (now + timedelta(seconds=60)).isoformat(),
+            "collected_at": now.isoformat(), "ttl_seconds": 60,
+        }
+        status, response = self.post(json.dumps(payload).encode("utf-8"))
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response["error"])
+
+    def test_excessively_nested_json_is_rejected_over_http(self):
+        # A bounded HTTP body can still exceed the JSON decoder's recursion limit.
+        payload = b"[" * 10000 + b"0" + b"]" * 10000
+        status, response = self.post(payload)
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response["error"])
+
+    def test_top_level_duplicate_key_rejected(self):
+        with self.assertRaisesRegex(ValueError, "duplicate JSON"):
+            parse_json_payload(b'{"authority":"one","authority":"other"}')
+
+    def test_nested_duplicate_key_rejected(self):
+        with self.assertRaisesRegex(ValueError, "duplicate JSON"):
+            parse_json_payload(b'{"context":{"role":"viewer","role":"admin"}}')
+
+    def test_non_finite_numbers_rejected(self):
+        for value in (b"NaN", b"Infinity", b"-Infinity"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "non-finite"):
+                    parse_json_payload(b'{"metric":' + value + b'}')
+
+    def test_numeric_exponent_overflow_is_rejected(self):
+        for value in (b"1e309", b"-1e309"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "non-finite"):
+                    parse_json_payload(b'{"metric":' + value + b'}')
+
+    def test_finite_json_float_is_preserved(self):
+        self.assertEqual({"metric": 1.25}, parse_json_payload(b'{"metric":1.25}'))
+
+    def test_numeric_exponent_overflow_is_rejected_over_http(self):
+        status, response = self.post(b'{"metric":1e309}')
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response.get("error"))
+
+    def test_duplicate_input_is_rejected_over_http(self):
+        status, response = self.post(b'{"request":{},"request":{}}')
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response.get("error"))
+
+    def test_capacity_exhaustion_returns_explicit_503(self):
+        now = datetime.now(timezone.utc).isoformat()
+        def payload(component_id):
+            return json.dumps({
+                "signal_id": component_id, "component_id": component_id,
+                "source": "test", "signal_type": "readiness",
+                "state": "healthy", "observed_at": now,
+                "collected_at": now, "ttl_seconds": 60,
+            }).encode("utf-8")
+        with patch("goreecloud_observability.runtime.STORE", HealthStore(max_components=1)):
+            accepted, accepted_response = self.post(payload("service:known"))
+            rejected, rejected_response = self.post(payload("service:unknown"))
+            self.assertEqual(202, accepted)
+            self.assertTrue(accepted_response["accepted"])
+            self.assertEqual(503, rejected)
+            self.assertEqual("capacity_exhausted", rejected_response["error"])
+
+    def test_non_finite_input_is_rejected_over_http(self):
+        status, response = self.post(b'{"data":NaN}')
+        self.assertEqual(400, status)
+        self.assertEqual("invalid_signal", response.get("error"))
+
+
+if __name__ == "__main__":
+    unittest.main()

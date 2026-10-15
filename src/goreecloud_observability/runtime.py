@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from .model import OperationalSignal
-from .store import HealthStore
+from .store import HealthStore, SignalCapacityError
 
 COMPONENT = "goreecloud-observability"
 VERSION = "0.1.0-dev"
@@ -15,25 +16,95 @@ STORE = HealthStore()
 
 
 def health_payload() -> dict[str, Any]:
-    return {"status": "healthy", "component": COMPONENT, "version": VERSION, "scope": "development-reference-runtime"}
+    return {"status": "healthy", "component": COMPONENT, "version": VERSION, "scope": "development-reference-runtime", "production_accepted": False}
 
 
 def readiness_payload() -> dict[str, Any]:
     return {"status": "ready", "component": COMPONENT, "version": VERSION, "production_accepted": False}
 
 
+def parse_json_payload(raw: bytes) -> Any:
+    """Parse strict JSON: duplicate keys and non-finite numbers are not authoritative input."""
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON object key")
+            result[key] = value
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError("non-finite JSON number is not permitted")
+
+    def parse_finite_float(raw_number: str) -> float:
+        number = float(raw_number)
+        if not math.isfinite(number):
+            raise ValueError("non-finite JSON number is not permitted")
+        return number
+
+    return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant, parse_float=parse_finite_float)
+
+
+def is_loopback_host(host_header: str) -> bool:
+    """Allow only local Host names in this untrusted Development HTTP server."""
+    if not host_header or any(char in host_header for char in ("/", "\\", "@", "?", "#")):
+        return False
+    try:
+        parsed = urlsplit("http://" + host_header)
+        return (
+            parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+            and parsed.username is None
+            and parsed.password is None
+            and (parsed.port is None or parsed.port > 0)
+        )
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "GoreeCloudObservability/0.1"
+
+    def _local_request(self) -> bool:
+        hosts = self.headers.get_all("Host", [])
+        if len(hosts) == 1 and is_loopback_host(hosts[0]):
+            return True
+        self._json(403, {"error": "untrusted_host"})
+        return False
+
+    def _json_post(self) -> bool:
+        # No browser-origin or cross-site mutations in this local-only service.
+        fetch_site = self.headers.get_all("Sec-Fetch-Site", [])
+        if self.headers.get_all("Origin") or len(fetch_site) > 1 or (
+            fetch_site and fetch_site[0].lower() not in {"none", "same-origin"}
+        ):
+            self._json(403, {"error": "browser_origin_not_supported"})
+            return False
+        if self.headers.get_content_type() != "application/json":
+            self._json(415, {"error": "unsupported_media_type"})
+            return False
+        # Python's HTTP parser does not decode chunked request bodies here.
+        # Reject ambiguous framing rather than reading an inconsistent body.
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) != 1 or (
+            not lengths[0].isascii() or not lengths[0].isdecimal()
+        ):
+            self._json(400, {"error": "invalid_request_framing"})
+            return False
+        return True
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._local_request():
+            return
         if self.path == "/healthz":
             self._json(200, health_payload())
             return
@@ -52,18 +123,24 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._local_request():
+            return
         if self.path != "/v1/signals":
             self._json(404, {"error": "not_found"})
+            return
+        if not self._json_post():
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 262144:
                 raise ValueError("request body size is invalid")
-            payload = json.loads(self.rfile.read(length))
+            payload = parse_json_payload(self.rfile.read(length))
             signal = OperationalSignal.from_mapping(payload)
             STORE.add(signal)
             self._json(202, {"accepted": True, "signal_id": signal.signal_id, "component_id": signal.component_id})
-        except (ValueError, json.JSONDecodeError) as exc:
+        except SignalCapacityError:
+            self._json(503, {"accepted": False, "error": "capacity_exhausted"})
+        except (ValueError, json.JSONDecodeError, RecursionError) as exc:
             self._json(400, {"accepted": False, "error": "invalid_signal", "message": str(exc)})
 
     def log_message(self, format: str, *args: object) -> None:

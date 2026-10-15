@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import re
+import math
 from typing import Any, Mapping
 
 
@@ -27,7 +29,10 @@ SENSITIVE_KEYS = {
 def _text(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
-    return value.strip()
+    cleaned = value.strip()
+    if len(cleaned) > 256:
+        raise ValueError(f"{name} exceeds the Development length limit")
+    return cleaned
 
 
 def _time(value: Any, name: str) -> datetime:
@@ -42,24 +47,66 @@ def _time(value: Any, name: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _sensitive_attribute_key(key: str) -> bool:
+    # Normalize camelCase and separators so prefixed/suffixed credential fields cannot
+    # bypass the base exact-key blocklist (e.g. db_password, oauthToken).
+    separated = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    normalized = re.sub(r"[^a-z0-9]+", "_", separated.lower()).strip("_")
+    pieces = set(normalized.split("_"))
+    compact = normalized.replace("_", "")
+    # Some producers emit unseparated aliases such as "apikey",
+    # "privatekey" or "passwordhash"; block those as credential metadata.
+    credential_fragments = (
+        "password", "passwd", "passphrase", "secret", "credential",
+        "authorization", "cookie", "privatekey", "apikey",
+    )
+    return (
+        any(fragment in compact for fragment in credential_fragments)
+        or compact.endswith("token")
+        or normalized in SENSITIVE_KEYS
+        or bool(pieces & {"password", "passwd", "passphrase", "secret",
+                          "token", "credential", "credentials", "cookie",
+                          "authorization", "bearer"})
+        or "private_key" in normalized
+        or "api_key" in normalized
+    )
+
+
+def _safe_attribute_value(value: Any, depth: int, remaining: list[int]) -> Any:
+    """Validate nested v1 JSON attributes with bounded size and secret filtering."""
+    remaining[0] -= 1
+    if remaining[0] < 0 or depth > 8:
+        raise ValueError("telemetry attributes exceed the Development complexity limit")
+    if isinstance(value, Mapping):
+        if len(value) > 64:
+            raise ValueError("attributes exceed the Development limit")
+        safe: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip() or len(key) > 128:
+                raise ValueError("telemetry attribute key is invalid")
+            if _sensitive_attribute_key(key):
+                raise ValueError("sensitive telemetry attribute key is not permitted")
+            safe[key] = _safe_attribute_value(item, depth + 1, remaining)
+        return safe
+    if isinstance(value, list):
+        if len(value) > 64:
+            raise ValueError("telemetry array exceeds the Development limit")
+        return [_safe_attribute_value(item, depth + 1, remaining) for item in value]
+    if not isinstance(value, (str, bool, int, float, type(None))):
+        raise ValueError("telemetry attributes must be JSON-safe values")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("non-finite telemetry attributes are not permitted")
+    if isinstance(value, str) and len(value) > 2048:
+        raise ValueError("telemetry string attribute exceeds the Development limit")
+    return value
+
+
 def _safe_attributes(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
     if not isinstance(value, Mapping):
         raise ValueError("attributes must be an object")
-    if len(value) > 64:
-        raise ValueError("attributes exceed the Development limit")
-    safe: dict[str, Any] = {}
-    for key, item in value.items():
-        normalized = str(key).lower().replace("-", "_")
-        if normalized in SENSITIVE_KEYS:
-            raise ValueError(f"attribute key '{key}' is not permitted")
-        if isinstance(item, (dict, list, tuple, set)):
-            raise ValueError("nested telemetry attributes are not supported by the Development foundation")
-        if isinstance(item, str) and len(item) > 2048:
-            raise ValueError("telemetry string attribute exceeds the Development limit")
-        safe[str(key)] = item
-    return safe
+    return _safe_attribute_value(value, 0, [256])
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,22 +132,28 @@ class OperationalSignal:
         except (TypeError, ValueError) as exc:
             raise ValueError("state is not supported") from exc
         ttl = value.get("ttl_seconds", 60)
-        if not isinstance(ttl, int) or ttl < 1 or ttl > 86400:
+        if type(ttl) is not int or ttl < 1 or ttl > 86400:
             raise ValueError("ttl_seconds must be an integer between 1 and 86400")
         gaps = value.get("collection_gaps", [])
         if not isinstance(gaps, list) or not all(isinstance(item, str) for item in gaps):
             raise ValueError("collection_gaps must be a list of strings")
+        if len(gaps) > 32 or any(len(item) > 256 for item in gaps):
+            raise ValueError("collection_gaps exceed the Development limit")
+        observed = _time(value.get("observed_at"), "observed_at")
+        collected = _time(value.get("collected_at"), "collected_at")
+        if collected < observed:
+            raise ValueError("collected_at must not precede observed_at")
         correlation = value.get("correlation_id")
-        if correlation is not None and not isinstance(correlation, str):
-            raise ValueError("correlation_id must be a string or null")
+        if correlation is not None:
+            correlation = _text(correlation, "correlation_id")
         return cls(
             signal_id=_text(value.get("signal_id"), "signal_id"),
             component_id=_text(value.get("component_id"), "component_id"),
             source=_text(value.get("source"), "source"),
             signal_type=_text(value.get("signal_type"), "signal_type"),
             state=state,
-            observed_at=_time(value.get("observed_at"), "observed_at"),
-            collected_at=_time(value.get("collected_at"), "collected_at"),
+            observed_at=observed,
+            collected_at=collected,
             ttl_seconds=ttl,
             correlation_id=correlation,
             attributes=_safe_attributes(value.get("attributes", {})),
@@ -110,7 +163,7 @@ class OperationalSignal:
     def fresh_at(self, now: datetime | None = None) -> bool:
         current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         age = (current - self.observed_at).total_seconds()
-        return 0 <= age <= self.ttl_seconds
+        return self.collected_at <= current and 0 <= age <= self.ttl_seconds
 
     def to_dict(self) -> dict[str, Any]:
         return {
