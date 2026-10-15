@@ -32,6 +32,13 @@ class ObservabilityTests(unittest.TestCase):
     def test_missing_is_unknown(self):
         self.assertEqual("unknown", HealthStore().health("missing", NOW)["state"])
 
+    def test_collected_before_observation_is_invalid(self):
+        with self.assertRaisesRegex(ValueError, "collected_at must not precede"):
+            signal(observed_at=(NOW + timedelta(seconds=5)).isoformat())
+
+    def test_equal_observation_and_collection_times_are_valid(self):
+        self.assertEqual(NOW, signal().observed_at)
+
     def test_stale_only_is_stale(self):
         store = HealthStore()
         store.add(signal(age=61))
