@@ -39,3 +39,7 @@ Operational evidence is not fresh until its declared collection time; this is te
 ### Development HTTP request boundary — 2026-10-15
 
 Local-only ingestion rejects nonloopback Host aliases, browser Origin POSTs, and non-JSON media types; attribute filtering also rejects compact credential names such as apikey, passwordHash, and privatekey. These source safeguards do not establish producer authentication or production telemetry privacy.
+
+### Concurrent stabilization audit — 2026-10-15
+
+Development telemetry JSON responses now include Cache-Control: no-store and X-Content-Type-Options: nosniff, verified through local HTTP tests. Sensitive attribute matching also blocks concatenated credential aliases.
