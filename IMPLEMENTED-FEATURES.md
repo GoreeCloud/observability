@@ -35,3 +35,7 @@ Second-pass solo-maintainer audit: OperationalSignal ingestion rejects contradic
 Solo-maintainer audit: deeply nested JSON is rejected with HTTP 400, and collection times before observations are rejected. Development-only behavior; no live telemetry authority claimed.
 
 Operational evidence is not fresh until its declared collection time; this is tested with synthetic signals. The CI workflow verifies the exact checked-out source commit before running tests.
+
+### Development HTTP request boundary — 2026-10-15
+
+Local-only ingestion rejects nonloopback Host aliases, browser Origin POSTs, and non-JSON media types; attribute filtering also rejects compact credential names such as apikey, passwordHash, and privatekey. These source safeguards do not establish producer authentication or production telemetry privacy.
