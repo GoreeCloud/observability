@@ -39,6 +39,12 @@ class ObservabilityTests(unittest.TestCase):
     def test_equal_observation_and_collection_times_are_valid(self):
         self.assertEqual(NOW, signal().observed_at)
 
+    def test_future_collected_evidence_is_not_current_health(self):
+        store = HealthStore()
+        store.add(signal(collected_at=(NOW + timedelta(seconds=10)).isoformat()))
+        self.assertEqual("stale", store.health("service:test", NOW)["state"])
+        self.assertEqual("healthy", store.health("service:test", NOW + timedelta(seconds=10))["state"])
+
     def test_stale_only_is_stale(self):
         store = HealthStore()
         store.add(signal(age=61))
