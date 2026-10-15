@@ -53,7 +53,16 @@ def _sensitive_attribute_key(key: str) -> bool:
     separated = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
     normalized = re.sub(r"[^a-z0-9]+", "_", separated.lower()).strip("_")
     pieces = set(normalized.split("_"))
+    compact = normalized.replace("_", "")
+    # Some producers emit unseparated aliases such as "apikey",
+    # "privatekey" or "passwordhash"; block those as credential metadata.
+    credential_fragments = (
+        "password", "passwd", "passphrase", "secret", "credential",
+        "authorization", "cookie", "privatekey", "apikey",
+    )
     return (
+        any(fragment in compact for fragment in credential_fragments)
+        or compact.endswith("token")
         normalized in SENSITIVE_KEYS
         or bool(pieces & {"password", "passwd", "passphrase", "secret",
                           "token", "credential", "credentials", "cookie",
