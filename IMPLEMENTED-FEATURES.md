@@ -43,3 +43,7 @@ Local-only ingestion rejects nonloopback Host aliases, browser Origin POSTs, and
 ### Concurrent stabilization audit — 2026-10-15
 
 Development telemetry JSON responses now include Cache-Control: no-store and X-Content-Type-Options: nosniff, verified through local HTTP tests. Sensitive attribute matching also blocks concatenated credential aliases.
+
+### Source-stabilization checkpoint — 2026-10-15
+
+Loopback HTTP ingestion rejects ambiguous framing and cross-site browser metadata. The in-memory store adds explicit confirmation-gated expired-component reclamation for Development recovery only; it preserves current and future-collected evidence, never evicts silently and provides no network reclamation endpoint. No durable telemetry recovery is asserted.
