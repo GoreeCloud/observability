@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -35,7 +36,13 @@ def parse_json_payload(raw: bytes) -> Any:
     def reject_constant(value: str) -> None:
         raise ValueError("non-finite JSON number is not permitted")
 
-    return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
+    def parse_finite_float(raw_number: str) -> float:
+        number = float(raw_number)
+        if not math.isfinite(number):
+            raise ValueError("non-finite JSON number is not permitted")
+        return number
+
+    return json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant, parse_float=parse_finite_float)
 
 
 class Handler(BaseHTTPRequestHandler):
