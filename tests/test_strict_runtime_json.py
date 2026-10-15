@@ -41,6 +41,19 @@ class StrictRuntimeJsonTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_health_response_has_privacy_headers(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request("GET", "/healthz")
+            response = connection.getresponse()
+            self.assertEqual(200, response.status)
+            self.assertEqual("no-store", response.getheader("Cache-Control"))
+            self.assertEqual("nosniff", response.getheader("X-Content-Type-Options"))
+            self.assertEqual("application/json", response.getheader("Content-Type"))
+            response.read()
+        finally:
+            connection.close()
+
     def test_nonlocal_host_is_rejected(self):
         for host in ("example.invalid", "localhost.example.invalid", "127.0.0.1@evil.invalid"):
             with self.subTest(host=host):
