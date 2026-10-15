@@ -32,6 +32,40 @@ class StrictRuntimeJsonTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def request_with_headers(self, method, path, payload, headers):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request(method, path, body=payload, headers=headers)
+            response = connection.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            connection.close()
+
+    def test_nonlocal_host_is_rejected(self):
+        for host in ("example.invalid", "localhost.example.invalid", "127.0.0.1@evil.invalid"):
+            with self.subTest(host=host):
+                status, response = self.request_with_headers("GET", "/healthz", None, {"Host": host})
+                self.assertEqual(403, status)
+                self.assertEqual("untrusted_host", response["error"])
+
+    def test_non_json_post_media_types_are_rejected(self):
+        for content_type in ("text/plain", "application/x-www-form-urlencoded"):
+            with self.subTest(content_type=content_type):
+                status, response = self.request_with_headers(
+                    "POST", "/v1/signals", b"{}", {"Content-Type": content_type},
+                )
+                self.assertEqual(415, status)
+                self.assertEqual("unsupported_media_type", response["error"])
+
+    def test_browser_origin_post_is_rejected(self):
+        status, response = self.request_with_headers(
+            "POST", "/v1/signals", b"{}", {
+                "Content-Type": "application/json", "Origin": "https://example.invalid",
+            },
+        )
+        self.assertEqual(403, status)
+        self.assertEqual("browser_origin_not_supported", response["error"])
+
     def test_valid_nested_json_is_accepted_by_parser(self):
         self.assertEqual({"subject": {"action": "read"}}, parse_json_payload(b'{"subject":{"action":"read"}}'))
 
