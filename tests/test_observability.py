@@ -127,6 +127,28 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(["metrics collector unavailable"], result["collection_gaps"])
         self.assertEqual("partially_observed", result["state"])
 
+    def test_repeated_identical_signal_is_idempotent(self):
+        store = HealthStore()
+        original = signal("same-event")
+        store.add(original)
+        store.add(signal("same-event"))
+        self.assertEqual(["same-event"], store.health("service:test", NOW)["signal_ids"])
+        self.assertEqual(1, store.health("service:test", NOW)["evidence_count"])
+
+    def test_conflicting_producer_signal_is_rejected_without_mutation(self):
+        store = HealthStore()
+        store.add(signal("same-event", "healthy"))
+        with self.assertRaisesRegex(ValueError, "conflicting signal identity"):
+            store.add(signal("same-event", "failed"))
+        self.assertEqual("healthy", store.health("service:test", NOW)["state"])
+        self.assertEqual(["same-event"], store.health("service:test", NOW)["signal_ids"])
+
+    def test_same_signal_id_from_different_producers_is_distinct(self):
+        store = HealthStore()
+        store.add(signal("cross-source"))
+        store.add(signal("cross-source", source="secondary-producer"))
+        self.assertEqual(2, store.health("service:test", NOW)["evidence_count"])
+
     def test_component_capacity_rejects_new_identity_without_eviction(self):
         store = HealthStore(max_components=1, max_signals_per_component=2)
         store.add(signal("first", "healthy"))
