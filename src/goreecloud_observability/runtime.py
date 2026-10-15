@@ -16,7 +16,7 @@ STORE = HealthStore()
 
 
 def health_payload() -> dict[str, Any]:
-    return {"status": "healthy", "component": COMPONENT, "version": VERSION, "scope": "development-reference-runtime"}
+    return {"status": "healthy", "component": COMPONENT, "version": VERSION, "scope": "development-reference-runtime", "production_accepted": False}
 
 
 def readiness_payload() -> dict[str, Any]:
