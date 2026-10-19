@@ -19,6 +19,12 @@ This repository now contains a bounded reference implementation for operational-
 - Contract 0.4 declaration covering all nine Integral Platform Systems.
 - Standard-library tests and CI.
 
+## GoreeCloud UI Integral Platform System status
+
+**GoreeCloud UI (GC UI)** is GoreeCloud's fifth Integral Platform System (of nine) and permanently replaces Glaze and Glaze UI. The current Observability reference collector has no GUI; a future dashboard or administrator interface must use GC UI and satisfy real conformance evidence.
+
+A separate [GC UI Platform Contract 2.1 candidate](docs/GC_UI_CONTRACT_2_1_CANDIDATE.md) and pinned CI evaluate this **headless non-applicability** without changing the canonical Contract 0.4 manifest or claiming a lifecycle promotion, runtime migration or production monitoring acceptance.
+
 ## Run locally
 
 ```bash
