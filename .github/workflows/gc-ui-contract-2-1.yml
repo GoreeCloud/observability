@@ -1,0 +1,25 @@
+name: GC UI Platform Contract 2.1 opt-in evaluation
+
+on:
+  pull_request:
+    paths:
+      - goreecloud.platform.v2.1.candidate.yaml
+      - .github/workflows/gc-ui-contract-2-1.yml
+      - docs/GC_UI_CONTRACT_2_1_CANDIDATE.md
+  push:
+    branches: [main]
+    paths:
+      - goreecloud.platform.v2.1.candidate.yaml
+      - .github/workflows/gc-ui-contract-2-1.yml
+      - docs/GC_UI_CONTRACT_2_1_CANDIDATE.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate-gc-ui-2-1-candidate:
+    name: Evaluate truthful Observability nonconformance with GC UI 2.1
+    uses: GoreeCloud/GoreeCloud/.github/workflows/reusable-platform-manifest-v2-1.yml@1499491159250d5f15dad4e2835fbeee2fda9ce9
+    with:
+      manifest-path: goreecloud.platform.v2.1.candidate.yaml
